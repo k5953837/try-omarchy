@@ -81,6 +81,24 @@ struct LanguagePreferenceStoreTests {
 
 @Suite("Language launch configuration")
 struct LanguageLaunchConfigurationTests {
+    @Test("an older saved VM cannot receive a stored or inherited locale")
+    func unsupportedGuestDropsLocale() {
+        let preference = LanguagePreference(localeToken: GuestLocaleCatalog.traditionalChinese.localeToken)
+        let configuration = LanguageLaunchConfiguration.make(
+            baseEnvironment: [LanguageLaunchConfiguration.environmentKey: "zh_TW.UTF-8"],
+            preference: preference,
+            supportsSelection: false
+        )
+        #expect(configuration.environment[LanguageLaunchConfiguration.environmentKey] == nil)
+        let state = LanguageMenuState.make(preference: preference, supportsSelection: false)
+        #expect(state.selectedLocale == nil)
+        #expect(!state.supportsSelection)
+        let presentation = StartMenuPresentation.language(state: state)
+        #expect(!presentation.isNonDefault)
+        #expect(presentation.detail.contains("Reset Omarchy"))
+        #expect(presentation.detail.contains("erases"))
+    }
+
     @Test("no preference emits no token and strips any inherited value")
     func defaultEmitsNothing() {
         let inherited = [

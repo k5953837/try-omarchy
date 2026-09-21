@@ -48,8 +48,40 @@ for argument in $command_line; do
   esac
 done
 
-# Whole-file rewrite, not a patch: /etc/locale.conf in this image holds only
-# LANG (KEYMAP lives in vconsole.conf and is never touched here), so the
-# output depends only on the command line and is byte-identical on repeat
-# runs with the same command line.
-printf 'LANG=%s\n' "$locale" >"$locale_conf"
+# Replace LANG only: users can customize LC_TIME, LC_NUMERIC and other
+# categories after provisioning. Never source their configuration as root.
+python3 - "$locale_conf" "$locale" <<'PY'
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+import tempfile
+
+path = Path(sys.argv[1])
+try:
+    mode = path.lstat().st_mode
+except FileNotFoundError:
+    mode = stat.S_IFREG | 0o644
+if not stat.S_ISREG(mode):
+    raise SystemExit("locale.conf must be a regular file")
+contents = path.read_text() if path.exists() else ""
+lines = [line for line in contents.splitlines(keepends=True)
+         if not re.match(r"^[ \t]*(?:export[ \t]+)?LANG[ \t]*=", line)]
+preserved = "".join(lines)
+if preserved and not preserved.endswith("\n"):
+    preserved += "\n"
+updated = preserved + f"LANG={sys.argv[2]}\n"
+if contents != updated:
+    descriptor, temporary = tempfile.mkstemp(prefix=".locale.conf.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w") as output:
+            output.write(updated)
+            output.flush()
+            os.fchmod(output.fileno(), stat.S_IMODE(mode))
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+PY

@@ -15,7 +15,7 @@ SCRIPT = GUEST / "native-overlay/usr/local/bin/try-omarchy-locale"
 
 class LocaleScriptTests(unittest.TestCase):
     def run_script(
-        self, command_line: str
+        self, command_line: str, initial_contents: str | None = None
     ) -> tuple[
         subprocess.CompletedProcess[str], Path, tempfile.TemporaryDirectory[str]
     ]:
@@ -24,6 +24,9 @@ class LocaleScriptTests(unittest.TestCase):
         cmdline = root / "cmdline"
         cmdline.write_text(command_line + "\n", encoding="utf-8")
         locale_conf = root / "locale.conf"
+        if initial_contents is not None:
+            locale_conf.write_text(initial_contents, encoding="utf-8")
+            locale_conf.chmod(0o640)
         result = subprocess.run(
             [str(SCRIPT)],
             check=False,
@@ -37,6 +40,34 @@ class LocaleScriptTests(unittest.TestCase):
             },
         )
         return result, locale_conf, temporary
+
+    def test_preserves_locale_categories_comments_and_permissions(self) -> None:
+        for command_line, expected_lang in (
+            ("root=/dev/vda rw", "en_US.UTF-8"),
+            ("tryomarchy.locale=zh_TW.UTF-8", "zh_TW.UTF-8"),
+        ):
+            result, conf, temporary = self.run_script(
+                command_line,
+                '# Custom formats\nLANG=en_US.UTF-8\nLC_TIME="zh_TW.UTF-8"\n'
+                'LC_NUMERIC=en_US.UTF-8\nLANGUAGE=zh_TW:en\n',
+            )
+            with temporary:
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(conf.read_text(),
+                    '# Custom formats\nLC_TIME="zh_TW.UTF-8"\n'
+                    'LC_NUMERIC=en_US.UTF-8\nLANGUAGE=zh_TW:en\n'
+                    f'LANG={expected_lang}\n')
+                self.assertEqual(conf.stat().st_mode & 0o777, 0o640)
+
+    def test_replaces_duplicate_lang_assignments_without_executing_contents(self) -> None:
+        result, conf, temporary = self.run_script(
+            "tryomarchy.locale=zh_TW.UTF-8",
+            "LANG=en_US.UTF-8\n export LANG=en_US.UTF-8\n# $(exit 99)\nLC_TIME=zh_TW.UTF-8",
+        )
+        with temporary:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(conf.read_text(),
+                "# $(exit 99)\nLC_TIME=zh_TW.UTF-8\nLANG=zh_TW.UTF-8\n")
 
     def test_no_token_writes_the_default_english_locale(self) -> None:
         result, locale_conf, temporary = self.run_script("root=/dev/vda rw")

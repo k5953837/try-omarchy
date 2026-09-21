@@ -24,6 +24,12 @@ struct GuestLocale: Equatable {
 /// store, launch configuration, and menu presentation all read from this
 /// list rather than naming a specific locale.
 enum GuestLocaleCatalog {
+    static let capabilityToken = "tryomarchy.locale_support=1"
+
+    static func supportsSelection(kernelCommandLine: String) -> Bool {
+        kernelCommandLine.split(whereSeparator: { $0.isWhitespace }).contains(Substring(capabilityToken))
+    }
+
     static let traditionalChinese = GuestLocale(
         localeToken: "zh_TW.UTF-8",
         displayName: "Traditional Chinese (繁體中文)"
@@ -94,11 +100,12 @@ struct LanguageLaunchConfiguration: Equatable {
     /// preference at all rather than passed through.
     static func make(
         baseEnvironment: [String: String],
-        preference: LanguagePreference
+        preference: LanguagePreference,
+        supportsSelection: Bool = true
     ) -> Self {
         var environment = baseEnvironment
         environment.removeValue(forKey: environmentKey)
-        guard let token = preference.localeToken,
+        guard supportsSelection, let token = preference.localeToken,
               GuestLocaleCatalog.locale(forToken: token) != nil else {
             return Self(environment: environment)
         }
@@ -110,10 +117,14 @@ struct LanguageLaunchConfiguration: Equatable {
 /// What the start menu shows for the language row.
 struct LanguageMenuState: Equatable {
     let selectedLocale: GuestLocale?
+    var supportsSelection: Bool = true
 
     static let systemDefault = Self(selectedLocale: nil)
 
-    static func make(preference: LanguagePreference) -> Self {
+    static func make(preference: LanguagePreference, supportsSelection: Bool = true) -> Self {
+        guard supportsSelection else {
+            return Self(selectedLocale: nil, supportsSelection: false)
+        }
         guard let token = preference.localeToken,
               let locale = GuestLocaleCatalog.locale(forToken: token) else {
             return .systemDefault

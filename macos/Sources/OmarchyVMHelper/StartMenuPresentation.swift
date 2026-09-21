@@ -214,14 +214,12 @@ enum StartMenuPresentation {
             hostMemoryMiB: hostMemoryMiB
         )
         let titles = choices.map { choice in
-            choice == MemoryPolicy.defaultMemoryMiB
-                ? "\(MemoryPolicy.displayLabel(memoryMiB: choice)) · default"
-                : MemoryPolicy.displayLabel(memoryMiB: choice)
+            MemoryPolicy.choiceTitle(memoryMiB: choice, hostMemoryMiB: hostMemoryMiB)
         }
         let isAdjustable = choices.count > 1
         return StartMenuMemoryPresentation(
             detail: isAdjustable
-                ? "Give Omarchy more of this Mac’s memory. Applies on the next launch."
+                ? "Higher allocations may affect macOS performance. Applies on the next launch."
                 : "This Mac’s memory fits the \(MemoryPolicy.displayLabel(memoryMiB: MemoryPolicy.defaultMemoryMiB)) default.",
             choicesMiB: choices,
             choiceTitles: titles,
@@ -237,9 +235,17 @@ enum StartMenuPresentation {
     }
 
     static func language(state: LanguageMenuState) -> StartMenuLanguagePresentation {
+        guard state.supportsSelection else {
+            return StartMenuLanguagePresentation(
+                detail: "This saved VM does not support language selection. Reset Omarchy to use it; reset erases the VM’s data.",
+                isNonDefault: false,
+                statusLabel: "○  Requires reset",
+                actionTitle: "Language unavailable"
+            )
+        }
         guard let selected = state.selectedLocale else {
             return StartMenuLanguagePresentation(
-                detail: "Omarchy boots in English, this Mac’s system default.",
+                detail: "Omarchy boots in English, the guest’s default language.",
                 isNonDefault: false,
                 statusLabel: "○  English",
                 actionTitle: "Switch to \(GuestLocaleCatalog.traditionalChinese.displayName)"

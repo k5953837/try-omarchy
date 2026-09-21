@@ -230,9 +230,13 @@ final class VMApplicationController: NSObject, NSApplicationDelegate {
                 )
             },
             languageStatus: { [weak self] in
-                LanguageMenuState.make(preference: self?.languagePreferenceStore.load() ?? .systemDefault)
+                LanguageMenuState.make(
+                    preference: self?.languagePreferenceStore.load() ?? .systemDefault,
+                    supportsSelection: self?.supportsLanguageSelection() ?? false
+                )
             },
             setLanguage: { [weak self] localeToken in
+                guard self?.supportsLanguageSelection() == true else { return }
                 self?.languagePreferenceStore.save(LanguagePreference(localeToken: localeToken))
             },
             launch: { [weak self] in
@@ -461,7 +465,8 @@ final class VMApplicationController: NSObject, NSApplicationDelegate {
         )
         let language = LanguageLaunchConfiguration.make(
             baseEnvironment: resources.environment,
-            preference: languagePreferenceStore.load()
+            preference: languagePreferenceStore.load(),
+            supportsSelection: supportsLanguageSelection()
         )
         let storage = StorageLocationLaunchConfiguration.make(
             baseEnvironment: language.environment,
@@ -584,6 +589,17 @@ final class VMApplicationController: NSObject, NSApplicationDelegate {
         } catch {
             return error.localizedDescription
         }
+    }
+
+    private func supportsLanguageSelection() -> Bool {
+        if initialArguments.first == QEMUGPUStorageOption.ephemeral.rawValue {
+            return bundledMetrics?.supportsLanguageSelection ?? false
+        }
+        return QEMUGPUStorageSpaceEstimate.supportsLanguageSelection(
+            environment: baseEnvironment,
+            metrics: bundledMetrics,
+            preference: storageLocationStore.load()
+        )
     }
 
     private func storageLocationMenuState() -> StorageLocationMenuState {
